@@ -2,19 +2,15 @@ import simpy
 import random
 
 
+# We vary these two parameters to find suitable values to meet our 15 minute max passenger wait time goal
+NumBoardingPassCheckers = 12
+NumSecurityScanners = 4
+
+
 Lambda1PassengerArrivalsPerMin = 5  # Problem param
 MuPassengerArrivalRatePerMin = 1/Lambda1PassengerArrivalsPerMin  # Implied problem param
 MuBoardingPassServiceTime = 0.75  # Problem param
-
-NumBoardingPassCheckers = 4
-NumSecurityScanners = 2
-
 SimulationRunTimeInMinutes = 60 * 6
-
-AvgPersonWaitTimePerIteration = []
-# AvgPersonBoardingPassCheckTimePerIteration
-# AvgPersonScanTimePerIteration
-# AvgPersonTimeInSystem
 
 
 class AirportSecurity(object):
@@ -65,13 +61,13 @@ class Passenger(object):
         self.finished_check_time = 0
         self.started_security_time = 0
         self.shortest_queue = 0
-
         self.num = num
 
     def get_waittime(self):
         return (self.started_check_time - self.arrival_time) + (self.started_security_time - self.finished_check_time)
 
     def go_through_system(self, env):
+        global total_passenger_wait_time
 
         # We track several time-stamps including arrival time to determine duration between events
         self.arrival_time = self.env.now
@@ -91,7 +87,11 @@ class Passenger(object):
                 yield env.process(airport.security_scan())
 
                 self.started_security_time = env.now
-                print("%s wait time %f.... arrived at %f, started check at %f and finished processing at %f, started sec at %f. Shortest queue %i" %
+
+                # Passenger.avg_wait_time = (Passenger.avg_wait_time * Passenger.passenger_count) +
+                total_passenger_wait_time = total_passenger_wait_time + self.get_waittime()
+                print("%s wait time %f.... arrived at %f, started check at %f and finished \
+processing at %f, started sec at %f. Shortest queue %i" %
                   (self,
                    self.get_waittime(),
                    self.arrival_time,
@@ -105,12 +105,12 @@ class Passenger(object):
 
 
 def run(env):
+    global passenger_count
     # Add passengers into the system on a Poisson distribution with lambda (average interval between
     # arrivals) of `Lambda1PassengerArrivalInterval`
-    person_num = 0
     while True:
-        passenger = Passenger(env, person_num)
-        person_num = person_num + 1
+        passenger = Passenger(env, passenger_count)
+        passenger_count = passenger_count + 1
 
         # The expovariate function produces numbers fitting an exponential distribution where the numbers
         # are the arrival times between passengers
@@ -118,7 +118,11 @@ def run(env):
         env.process(passenger.go_through_system(env))
 
 
+total_passenger_wait_time = 0
+passenger_count = 0
+
 simpyenv = simpy.Environment()
 airport = AirportSecurity(simpyenv)
 simpyenv.process(run(simpyenv))
 simpyenv.run(until=SimulationRunTimeInMinutes)
+print("\nAVG passenger wait time was %f minutes" % (total_passenger_wait_time/passenger_count))
